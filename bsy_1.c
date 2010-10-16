@@ -23,7 +23,9 @@ struct ext2_super_block *superblock(char *dump, double filesize) {
 		sb=(struct ext2_super_block *) temp;
 		/* Gefunden? */
 		if(sb->s_magic == EXT2_MAGIC_NUMBER && (sb->s_log_block_size==0 || sb->s_log_block_size==1 || sb->s_log_block_size==2)) {
-			return sb;
+			/*Steht der Superblock am Anfang der ermittelten Blockgroesse ?*/
+			if((temp-dump) % (int)pow(2.0,10+sb->s_log_block_size)==0)
+				return sb;
 		}
 	}
 	return 0;
@@ -99,7 +101,7 @@ int main (int argc, char **argv)
 	size_t result;
 	double blocksize=0;
 
-	ext2dump=fopen("ext2fs1.raw", "r");
+	ext2dump=fopen("ext2fs2.raw", "r");
 	if(ext2dump==0) { 
 		fputs("Datei konnte nicht geoeffnet werden!",stderr); 
 		exit(1);
@@ -125,7 +127,9 @@ int main (int argc, char **argv)
 	}
 	sb=superblock(ext2buffer, filesize);
 	blocksize=pow(2.0, 10.0+sb->s_log_block_size);
+	printf("Blocksize: %f\n", blocksize);
 	gd=(struct ext2_group_desc *) get_block((char *)sb, 1, blocksize);
+	printf("Inode-Table %d\n", gd->bg_inode_table);
 	ino=(struct ext2_inode *) get_block(ext2buffer, gd->bg_inode_table, blocksize);
 
 	de=(struct ext2_dir_entry_2 *) get_block(ext2buffer, ino[1].i_block[0], blocksize);
@@ -135,9 +139,6 @@ int main (int argc, char **argv)
 	de=(struct ext2_dir_entry_2 *) get_block((char *) de, 1, de->rec_len);
 	print_dentry(de);
 
-	printf("Filesize: %d\n",ino[10].i_size);
-
-	get_file(&ino[10],ext2buffer,blocksize, "bild.jpg");
 	fclose(ext2dump);
 	free(ext2buffer);
 	return 0;
