@@ -35,7 +35,7 @@ struct ext2_super_block *superblock(char *dump, double filesize) {
 
 		sb=(struct ext2_super_block *)temp;
 		/* Gefunden? */
-		if(sb->s_magic == EXT2_MAGIC_NUMBER && (sb->s_log_block_size==0 || sb->s_log_block_size==1 || sb->s_log_block_size==2)) {
+		if(sb->s_magic == EXT2_SUPER_MAGIC && (sb->s_log_block_size==0 || sb->s_log_block_size==1 || sb->s_log_block_size==2)) {
 			/*Steht der Superblock am Anfang der ermittelten Blockgroesse ?*/
 			if((temp-dump) % (int)pow(2.0,10+sb->s_log_block_size)==0)
 				return sb;
@@ -229,5 +229,5 @@ int main (int argc, char **argv)
 	
 	fclose(ext2dump);
 	free(ext2_buffer);
-	return 0;
+	return EXIT_SUCCESS;
 }
