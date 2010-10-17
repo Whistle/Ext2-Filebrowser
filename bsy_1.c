@@ -141,12 +141,8 @@ void print_dentry(struct ext2_dir_entry_2 *de, unsigned char depth) {
 	printf("\n");
 }
 
-<<<<<<< HEAD
 
-void print_hierachy(int inode) {
-=======
-void print_hierachy(struct ext2_super_block *sb, int inode, unsigned char depth) {
->>>>>>> Level2
+void print_hierachy(int inode, unsigned char depth) {
 	struct ext2_dir_entry_2 *de=0;
 	struct ext2_inode *ino=0;
 	int rec_len_sum=0;
@@ -169,7 +165,7 @@ void print_hierachy(struct ext2_super_block *sb, int inode, unsigned char depth)
 		add_entry(de);
 		rec_len_sum+=de->rec_len;
 		if(inode!=de->inode&&de->file_type==2) {
-			print_hierachy(sb,de->inode,depth+1);
+			print_hierachy(de->inode,depth+1);
 		}
 	}
 }
@@ -222,7 +218,7 @@ int main (int argc, char **argv)
 	if(!sb)
 		exit(4);
 	blocksize=pow(2.0, 10.0+sb->s_log_block_size);
-	print_hierachy(EXT2_ROOT_INO);
+	print_hierachy(EXT2_ROOT_INO,0);
 
 
 	fputs("\nBitte Inode der zu extrahierenden Datei eingeben: ( oder 0 zum Beenden )",stdout);
