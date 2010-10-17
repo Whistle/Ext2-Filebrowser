@@ -61,7 +61,7 @@ struct ext2_inode *get_inode(struct ext2_super_block *sb, int inode) {
 	return ino;	
 }
 
-int get_file(struct ext2_super_block *sb, int inode) {
+void get_file(struct ext2_super_block *sb, int inode) {
 	int i=0,j=0,found=0;
 	int *blocks;
 	__le32 rfilesize=0;
@@ -70,15 +70,16 @@ int get_file(struct ext2_super_block *sb, int inode) {
 	char *filename=0;
 	FILE *fd;
 	ino=get_inode(sb,inode);
-	printf("%d\n",ino->i_size);
 	for(e=anker; e; e=e->nxt) {
 		if(inode==e->inode && e->file_type==1) {
 			filename=e->name;
 			found=1;
 		}
 	}
-	if(!found)
-		return -1;
+	if(!found) {
+			printf("Es konnte keine regulaere Datei mit der Inode %d gefunden werden!\n",inode);
+		return;
+	}
 	fd=fopen(filename, "w+");
 	while(i < 13) {
 		if(i<12) {
@@ -110,19 +111,24 @@ int get_file(struct ext2_super_block *sb, int inode) {
 		i++;	
 	}
 	fclose(fd);
-	return 0;
+	printf("Datei wurde erfolgreich extrahiert!\n");
+	return;
 }
 
 
 void add_entry(struct ext2_dir_entry_2 *de) {
 	struct entry *e=(struct entry *)malloc(sizeof(struct entry));
-	e->name=(char *)malloc(de->name_len+1);
-	memcpy(e->name,de->name,de->name_len);
-	*(e->name+de->name_len)=0;
+	if(!e)
+		exit(5);
 	e->inode=de->inode;
 	e->nxt=anker;
 	e->file_type=de->file_type;
 	anker=e;
+	e->name=(char *)malloc(de->name_len+1);
+	if(!e->name)
+		exit(6);
+	memcpy(e->name,de->name,de->name_len);
+	*(e->name+de->name_len)=0;
 }
 void print_dentry(struct ext2_dir_entry_2 *de) {
 	int len=0;
@@ -161,15 +167,27 @@ void print_hierachy(struct ext2_super_block *sb, int inode) {
 	}
 }
 
+
+void free_entry_list() {
+	struct entry *e,*temp;	
+	for(e=anker; e; e=temp->nxt) {
+		temp=e;
+		free(e->name);
+		free(e);
+	}
+}
+
 int main (int argc, char **argv)
 {
 	struct ext2_super_block *sb;
-	struct entry *e,*temp;
 	FILE * ext2dump;
 	unsigned long filesize;
 	size_t result;
-
-	ext2dump=fopen("ext2fs2.raw", "r");
+	int command=1;
+	char number_buf[20];
+	/* Komme was wolle den Speicher wieder freigeben */
+	atexit(free_entry_list);
+	ext2dump=fopen(argv[1], "r");
 	if(ext2dump==0) { 
 		fputs("Datei konnte nicht geoeffnet werden!",stderr); 
 		exit(1);
@@ -197,17 +215,19 @@ int main (int argc, char **argv)
 	if(!sb)
 		exit(4);
 	blocksize=pow(2.0, 10.0+sb->s_log_block_size);
+	print_hierachy(sb, EXT2_ROOT_INO);
 
-	print_hierachy(sb,2);
-	get_file(sb,12802);
-	/* Speicher wieder freigeben */
-	for(e=anker; e; e=temp->nxt) {
-		temp=e;
-		free(e->name);
-		free(e);
+
+	fputs("Bitte Inode der zu extrahierenden Datei eingeben: ( oder 0 zum Beenden )",stdout);
+	while(command) {
+		fgets(number_buf,sizeof(number_buf), stdin);
+		sscanf(number_buf,"%d",&command);
+		if(!command)
+			break;
+		get_file(sb,command);
 	}
+	
 	fclose(ext2dump);
 	free(ext2_buffer);
 	return 0;
 }
-
