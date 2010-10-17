@@ -11,6 +11,7 @@
 char *ext2_buffer;
 int blocksize;
 struct entry *anker=0;
+struct ext2_super_block *sb=0;
 
 struct entry {
 	int inode;
@@ -20,7 +21,6 @@ struct entry {
 };
 
 struct ext2_super_block *superblock(char *dump, double filesize) {
-	struct ext2_super_block *sb=0;
 	char *temp;
 	int i=0;
 
@@ -50,7 +50,7 @@ char * get_block(char *buffer, int block, int blocksize) {
 	return temp;
 }
 
-struct ext2_inode *get_inode(struct ext2_super_block *sb, int inode) {
+struct ext2_inode *get_inode(int inode) {
 	struct ext2_group_desc *gd=0;
 	struct ext2_inode *ino=0;
 
@@ -61,7 +61,7 @@ struct ext2_inode *get_inode(struct ext2_super_block *sb, int inode) {
 	return ino;	
 }
 
-void get_file(struct ext2_super_block *sb, int inode) {
+void get_file(int inode) {
 	int i=0,j=0,found=0;
 	int *blocks;
 	__le32 rfilesize=0;
@@ -69,7 +69,7 @@ void get_file(struct ext2_super_block *sb, int inode) {
 	struct entry *e;
 	char *filename=0;
 	FILE *fd;
-	ino=get_inode(sb,inode);
+	ino=get_inode(inode);
 	for(e=anker; e; e=e->nxt) {
 		if(inode==e->inode && e->file_type==1) {
 			filename=e->name;
@@ -140,12 +140,12 @@ void print_dentry(struct ext2_dir_entry_2 *de) {
 }
 
 
-void print_hierachy(struct ext2_super_block *sb, int inode) {
+void print_hierachy(int inode) {
 	struct ext2_dir_entry_2 *de=0;
 	struct ext2_inode *ino=0;
 	int rec_len_sum=0;
 
-	ino=get_inode(sb,inode);
+	ino=get_inode(inode);
 
 	/* Gib . aus*/
 	de=(struct ext2_dir_entry_2 *) get_block(ext2_buffer, ino[0].i_block[0], blocksize);
@@ -163,7 +163,7 @@ void print_hierachy(struct ext2_super_block *sb, int inode) {
 		add_entry(de);
 		rec_len_sum+=de->rec_len;
 		if(inode!=de->inode&&de->file_type==2)
-			print_hierachy(sb,de->inode);
+			print_hierachy(de->inode);
 	}
 }
 
@@ -215,7 +215,7 @@ int main (int argc, char **argv)
 	if(!sb)
 		exit(4);
 	blocksize=pow(2.0, 10.0+sb->s_log_block_size);
-	print_hierachy(sb, EXT2_ROOT_INO);
+	print_hierachy(EXT2_ROOT_INO);
 
 
 	fputs("Bitte Inode der zu extrahierenden Datei eingeben: ( oder 0 zum Beenden )",stdout);
@@ -224,7 +224,7 @@ int main (int argc, char **argv)
 		sscanf(number_buf,"%d",&command);
 		if(!command)
 			break;
-		get_file(sb,command);
+		get_file(command);
 	}
 	
 	fclose(ext2dump);
