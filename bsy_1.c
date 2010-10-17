@@ -5,8 +5,6 @@
 #include <linux/fs.h>
 #include <linux/ext2_fs.h>
 
-#define EXT2_MAGIC_NUMBER 0xEF53
-
 
 char *ext2_buffer;
 int blocksize;
@@ -130,17 +128,20 @@ void add_entry(struct ext2_dir_entry_2 *de) {
 	memcpy(e->name,de->name,de->name_len);
 	*(e->name+de->name_len)=0;
 }
-void print_dentry(struct ext2_dir_entry_2 *de) {
-	int len=0;
-	printf("Inode: %d\tRec-Len: %d\tFileType: %d\tFilename: ", de->inode, de->rec_len, de->file_type);
+
+void print_dentry(struct ext2_dir_entry_2 *de, unsigned char depth) {
+	int len=0, count=0;
+	for(count=0; count<depth; count++) {
+		printf("\t");
+	}
+	printf("Inode: %d\tFileType: %d\tFilename: ", de->inode, de->file_type);
 	for(len=0; len<de->name_len; len++) {
 		printf("%c", de->name[len]);
 	}
 	printf("\n");
 }
 
-
-void print_hierachy(struct ext2_super_block *sb, int inode) {
+void print_hierachy(struct ext2_super_block *sb, int inode, unsigned char depth) {
 	struct ext2_dir_entry_2 *de=0;
 	struct ext2_inode *ino=0;
 	int rec_len_sum=0;
@@ -150,20 +151,21 @@ void print_hierachy(struct ext2_super_block *sb, int inode) {
 	/* Gib . aus*/
 	de=(struct ext2_dir_entry_2 *) get_block(ext2_buffer, ino[0].i_block[0], blocksize);
 	rec_len_sum+=de->rec_len;
-	print_dentry(de);
+	print_dentry(de,depth);
 	/* Gib .. aus*/
 	de=(struct ext2_dir_entry_2 *) get_block((char *) de, 1, de->rec_len);
-	print_dentry(de);
+	print_dentry(de,depth);
 	rec_len_sum+=de->rec_len;
 
 	/*Und jetzt den Rest*/
 	while(rec_len_sum<blocksize) {
 		de=(struct ext2_dir_entry_2 *) get_block((char *) de, 1, de->rec_len);
-		print_dentry(de);
+		print_dentry(de,depth);
 		add_entry(de);
 		rec_len_sum+=de->rec_len;
-		if(inode!=de->inode&&de->file_type==2)
-			print_hierachy(sb,de->inode);
+		if(inode!=de->inode&&de->file_type==2) {
+			print_hierachy(sb,de->inode,depth+1);
+		}
 	}
 }
 
@@ -189,7 +191,7 @@ int main (int argc, char **argv)
 	atexit(free_entry_list);
 	ext2dump=fopen(argv[1], "r");
 	if(ext2dump==0) { 
-		fputs("Datei konnte nicht geoeffnet werden!",stderr); 
+		fputs("Datei konnte nicht geoeffnet werden!\n",stderr); 
 		exit(1);
 	}
 
@@ -201,24 +203,24 @@ int main (int argc, char **argv)
 	/* Speicher reservieren*/
 	ext2_buffer=(char *)malloc(filesize);
 	if(ext2_buffer==0) {
-		fputs("Speicher kann nicht reserviert werden",stderr);
+		fputs("Speicher kann nicht reserviert werden\n",stderr);
 		exit(2);
 	}
 
 	/* Datei in den reservierten Speicher lesen */
 	result=fread(ext2_buffer,1,filesize,ext2dump);
 	if(result!=filesize) {
-		fputs("Es konnte nicht alle Daten gelesen werden",stderr);
+		fputs("Es konnte nicht alle Daten gelesen werden\n",stderr);
 		exit(3);
 	}
 	sb=superblock(ext2_buffer, filesize);
 	if(!sb)
 		exit(4);
 	blocksize=pow(2.0, 10.0+sb->s_log_block_size);
-	print_hierachy(sb, EXT2_ROOT_INO);
+	print_hierachy(sb, EXT2_ROOT_INO,0);
 
 
-	fputs("Bitte Inode der zu extrahierenden Datei eingeben: ( oder 0 zum Beenden )",stdout);
+	fputs("\nBitte Inode der zu extrahierenden Datei eingeben: ( oder 0 zum Beenden )",stdout);
 	while(command) {
 		fgets(number_buf,sizeof(number_buf), stdin);
 		sscanf(number_buf,"%d",&command);
