@@ -5,11 +5,11 @@
 #include <linux/fs.h>
 #include <linux/ext2_fs.h>
 
-
 char *ext2_buffer;
 int blocksize;
 struct entry *anker=0;
 struct ext2_super_block *sb=0;
+char *null_block;
 
 struct entry {
 	int inode;
@@ -35,7 +35,11 @@ struct ext2_super_block *superblock(char *dump, double filesize) {
 		/* Gefunden? */
 		if(sb->s_magic == EXT2_SUPER_MAGIC && (sb->s_log_block_size==0 || sb->s_log_block_size==1 || sb->s_log_block_size==2)) {
 			/*Steht der Superblock am Anfang der ermittelten Blockgroesse ?*/
-			if((temp-dump) % (int)pow(2.0,10+sb->s_log_block_size)==0)
+			/* if((temp-dump) % (int)pow(2.0,10+sb->s_log_block_size)==0)*/
+			printf("Superblock-Informationen:\n");
+			printf("Blockgroesse:\t%d\n", sb->s_log_block_size);
+			printf("Blockgruppen-Nr:\t%d\n", sb->s_block_group_nr);
+			printf("Indodes pro Gruppe:\t%d\n", sb->s_inodes_per_group);
 				return sb;
 		}
 	}
@@ -52,7 +56,7 @@ struct ext2_inode *get_inode(int inode) {
 	struct ext2_group_desc *gd=0;
 	struct ext2_inode *ino=0;
 
-	gd=(struct ext2_group_desc *) get_block((char *)sb, 1, blocksize);
+	gd=(struct ext2_group_desc *) get_block((char *)sb, 1, blocksize - ((char *)sb-ext2_buffer) % (int)blocksize);
 	gd+=inode/(int)sb->s_inodes_per_group;
 	ino=(struct ext2_inode *) get_block(ext2_buffer, gd->bg_inode_table, blocksize);
 	ino+=inode%(int)sb->s_inodes_per_group-1;
@@ -61,7 +65,7 @@ struct ext2_inode *get_inode(int inode) {
 
 void get_file(int inode) {
 	int i=0,j=0,found=0;
-	int *blocks;
+	int *einfach;
 	__le32 rfilesize=0;
 	struct ext2_inode *ino;
 	struct entry *e;
@@ -79,7 +83,7 @@ void get_file(int inode) {
 		return;
 	}
 	fd=fopen(filename, "w+");
-	while(i < 13) {
+	while(rfilesize<ino->i_size) {
 		if(i<12) {
 			/*Enthaelt die Nummer des Blocks die die gewuenschten Daten enthaelt*/
 			if(ino->i_block[i]) {
@@ -90,21 +94,39 @@ void get_file(int inode) {
 				} else {
 					fwrite(get_block(ext2_buffer,ino->i_block[i],blocksize),1,blocksize,fd);
 				}
-			}
+			} else {
+				rfilesize+=blocksize;
+				if(rfilesize>ino->i_size) {
+					fwrite(null_block,1,blocksize-(rfilesize-ino->i_size),fd);
+					break;
+				} else {
+					fwrite(null_block,1,blocksize,fd);
+				}
+			} 
 		}
 		if(i==12) {
 			/*Enthaelt die Nummer des inderekten Blocks*/
-			blocks=(int *)get_block(ext2_buffer, ino->i_block[12], blocksize);
-			for(j=0; j<(int)(blocksize/sizeof(int)); j++)
-				if(blocks[j]) {
+			einfach=(int *)get_block(ext2_buffer, ino->i_block[12], blocksize);
+
+			for(j=0; j<((int)blocksize/4); j++) {
+				if(einfach[j]) {
 					rfilesize+=blocksize;
 					if(rfilesize>ino->i_size) {
-						fwrite(get_block(ext2_buffer,blocks[j],blocksize),1,blocksize-(rfilesize-ino->i_size),fd);
+						fwrite(get_block(ext2_buffer,einfach[j],blocksize),1,blocksize-(rfilesize-ino->i_size),fd);
 						break;
 					} else {
-						fwrite(get_block(ext2_buffer,blocks[j],blocksize),1,blocksize,fd);
+						fwrite(get_block(ext2_buffer,einfach[j],blocksize),1,blocksize,fd);
+					}
+				} else {
+					rfilesize+=blocksize;
+					if(rfilesize>ino->i_size) {
+						fwrite(null_block,1,blocksize-(rfilesize-ino->i_size),fd);
+						break;
+					} else {
+						fwrite(null_block,1,blocksize,fd);
 					}
 				}
+			}
 		}
 		i++;	
 	}
@@ -170,7 +192,7 @@ void print_hierachy(int inode, unsigned char depth) {
 	}
 }
 
-
+/* Den simple Entry-Cache leeren */
 void free_entry_list() {
 	struct entry *e,*temp;	
 	for(e=anker; e; e=temp->nxt) {
@@ -217,6 +239,7 @@ int main (int argc, char **argv)
 	sb=superblock(ext2_buffer, filesize);
 	if(!sb)
 		exit(4);
+	null_block=(char *)calloc(1, (int)blocksize);
 	blocksize=pow(2.0, 10.0+sb->s_log_block_size);
 	print_hierachy(EXT2_ROOT_INO,0);
 
