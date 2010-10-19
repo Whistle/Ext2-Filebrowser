@@ -40,15 +40,15 @@ struct ext2_super_block *superblock(char *dump, double filesize) {
 			printf("Blockgroesse:\t%d\n", sb->s_log_block_size);
 			printf("Blockgruppen-Nr:\t%d\n", sb->s_block_group_nr);
 			printf("Indodes pro Gruppe:\t%d\n", sb->s_inodes_per_group);
-				return sb;
+			return sb;
 		}
 	}
 	return 0;
 }
 
-char * get_block(char *buffer, int block, int blocksize) {
+char * get_block(char *buffer, __u32 block, int blocksize) {
 	char *temp=buffer;
-	temp+=block*blocksize;
+	temp+=(block)*blocksize;
 	return temp;
 }
 
@@ -64,14 +64,16 @@ struct ext2_inode *get_inode(int inode) {
 }
 
 void get_file(int inode) {
-	int i=0,j=0,found=0;
-	int *einfach;
-	__le32 rfilesize=0;
+	int i=0,j=0,k=0,found=0;
+	__u32 *einfach;
+	__u32 *zweifach;
+	__u32 rfilesize=0;
 	struct ext2_inode *ino;
 	struct entry *e;
 	char *filename=0;
 	FILE *fd;
 	ino=get_inode(inode);
+	printf("Info Filesize: %d\n",ino->i_size);
 	for(e=anker; e; e=e->nxt) {
 		if(inode==e->inode && e->file_type==1) {
 			filename=e->name;
@@ -79,7 +81,7 @@ void get_file(int inode) {
 		}
 	}
 	if(!found) {
-			printf("Es konnte keine regulaere Datei mit der Inode %d gefunden werden!\n",inode);
+		printf("Es konnte keine regulaere Datei mit der Inode %d gefunden werden!\n",inode);
 		return;
 	}
 	fd=fopen(filename, "w+");
@@ -105,12 +107,14 @@ void get_file(int inode) {
 			} 
 		}
 		if(i==12) {
+			puts("Einfach Indirekt\n");
 			/*Enthaelt die Nummer des inderekten Blocks*/
-			einfach=(int *)get_block(ext2_buffer, ino->i_block[12], blocksize);
-
-			for(j=0; j<((int)blocksize/4); j++) {
+			einfach=(__u32 *)get_block(ext2_buffer, ino->i_block[i], blocksize);
+			printf("Times: %d\n",(int)blocksize/4);
+			for(j=0; j<(int)blocksize/4; j++) {
+				rfilesize+=blocksize;
+				/*printf("Lese Block %d\n",einfach[j]); */
 				if(einfach[j]) {
-					rfilesize+=blocksize;
 					if(rfilesize>ino->i_size) {
 						fwrite(get_block(ext2_buffer,einfach[j],blocksize),1,blocksize-(rfilesize-ino->i_size),fd);
 						break;
@@ -118,7 +122,6 @@ void get_file(int inode) {
 						fwrite(get_block(ext2_buffer,einfach[j],blocksize),1,blocksize,fd);
 					}
 				} else {
-					rfilesize+=blocksize;
 					if(rfilesize>ino->i_size) {
 						fwrite(null_block,1,blocksize-(rfilesize-ino->i_size),fd);
 						break;
@@ -126,6 +129,34 @@ void get_file(int inode) {
 						fwrite(null_block,1,blocksize,fd);
 					}
 				}
+			}
+		}
+		if(i==13){
+			puts("Zweifach Indirekt\n");
+			einfach=(__u32 *)get_block(ext2_buffer, ino->i_block[i], blocksize);
+			for(j=0; j<(int)blocksize/4; j++) {
+				zweifach=(__u32 *)get_block(ext2_buffer, einfach[j],blocksize);
+				for(k=0; k<(int)blocksize/4; k++) {
+					rfilesize+=blocksize;
+					if(zweifach[k]) {
+						if(rfilesize>ino->i_size) {
+							fwrite(get_block(ext2_buffer,zweifach[k],blocksize),1,blocksize-(rfilesize-ino->i_size),fd);
+							break;
+						} else {
+							fwrite(get_block(ext2_buffer,zweifach[k],blocksize),1,blocksize,fd);
+						}
+					} else {
+						if(rfilesize>ino->i_size) {
+							fwrite(null_block,1,blocksize-(rfilesize-ino->i_size),fd);
+							break;
+						} else {
+							fwrite(null_block,1,blocksize,fd);
+						}
+					}
+
+				}
+				if(rfilesize>ino->i_size)
+					break;
 			}
 		}
 		i++;	
@@ -206,7 +237,7 @@ int main (int argc, char **argv)
 {
 	struct ext2_super_block *sb;
 	FILE * ext2dump;
-	unsigned long filesize;
+	__u32 filesize;
 	size_t result;
 	int command=1;
 	char number_buf[20];
@@ -239,8 +270,8 @@ int main (int argc, char **argv)
 	sb=superblock(ext2_buffer, filesize);
 	if(!sb)
 		exit(4);
-	null_block=(char *)calloc(1, (int)blocksize);
 	blocksize=pow(2.0, 10.0+sb->s_log_block_size);
+	null_block=(char *)calloc(1, (int)blocksize);
 	print_hierachy(EXT2_ROOT_INO,0);
 
 
@@ -252,8 +283,9 @@ int main (int argc, char **argv)
 			break;
 		get_file(command);
 	}
-	
+
 	fclose(ext2dump);
 	free(ext2_buffer);
+	free(null_block);
 	return EXIT_SUCCESS;
 }
