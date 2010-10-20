@@ -40,15 +40,20 @@ struct ext2_super_block *superblock(char *dump, double filesize) {
 			printf("Blockgroesse:\t%d\n", sb->s_log_block_size);
 			printf("Blockgruppen-Nr:\t%d\n", sb->s_block_group_nr);
 			printf("Indodes pro Gruppe:\t%d\n", sb->s_inodes_per_group);
+			printf("Bloecke:\t%d\n",sb->s_blocks_count);
 			return sb;
 		}
 	}
 	return 0;
 }
 
-char * get_block(char *buffer, __u32 block, int blocksize) {
+char * get_block(char *buffer, unsigned int block, int blocksize) {
 	char *temp=buffer;
-	temp+=(block)*blocksize;
+	if(block>sb->s_blocks_count) {
+		printf("Der Block liegt nicht mehr im FS\n");
+		exit(7);
+	}
+	temp+=block*blocksize;
 	return temp;
 }
 
@@ -65,15 +70,14 @@ struct ext2_inode *get_inode(int inode) {
 
 void get_file(int inode) {
 	int i=0,j=0,k=0,found=0;
-	__u32 *einfach;
-	__u32 *zweifach;
-	__u32 rfilesize=0;
+	int *einfach;
+	int *zweifach;
+	int rfilesize=0;
 	struct ext2_inode *ino;
 	struct entry *e;
 	char *filename=0;
 	FILE *fd;
 	ino=get_inode(inode);
-	printf("Info Filesize: %d\n",ino->i_size);
 	for(e=anker; e; e=e->nxt) {
 		if(inode==e->inode && e->file_type==1) {
 			filename=e->name;
@@ -87,9 +91,10 @@ void get_file(int inode) {
 	fd=fopen(filename, "w+");
 	while(rfilesize<ino->i_size) {
 		if(i<12) {
+			rfilesize+=blocksize;
+			/*printf("Block: %d\n",ino->i_block[i]);*/
 			/*Enthaelt die Nummer des Blocks die die gewuenschten Daten enthaelt*/
 			if(ino->i_block[i]) {
-				rfilesize+=blocksize;
 				if(rfilesize>ino->i_size) {
 					fwrite(get_block(ext2_buffer,ino->i_block[i],blocksize),1,blocksize-(rfilesize-ino->i_size),fd);
 					break;
@@ -97,7 +102,6 @@ void get_file(int inode) {
 					fwrite(get_block(ext2_buffer,ino->i_block[i],blocksize),1,blocksize,fd);
 				}
 			} else {
-				rfilesize+=blocksize;
 				if(rfilesize>ino->i_size) {
 					fwrite(null_block,1,blocksize-(rfilesize-ino->i_size),fd);
 					break;
@@ -109,12 +113,11 @@ void get_file(int inode) {
 		if(i==12) {
 			puts("Einfach Indirekt\n");
 			/*Enthaelt die Nummer des inderekten Blocks*/
-			einfach=(__u32 *)get_block(ext2_buffer, ino->i_block[i], blocksize);
-			printf("Times: %d\n",(int)blocksize/4);
+			einfach=(int *)get_block(ext2_buffer, ino->i_block[i], blocksize);
 			for(j=0; j<(int)blocksize/4; j++) {
 				rfilesize+=blocksize;
-				/*printf("Lese Block %d\n",einfach[j]); */
-				if(einfach[j]) {
+				/*printf("Block: %d j: %d\n",einfach[j], j);*/
+				if(einfach[j] && ino->i_block[12]) {
 					if(rfilesize>ino->i_size) {
 						fwrite(get_block(ext2_buffer,einfach[j],blocksize),1,blocksize-(rfilesize-ino->i_size),fd);
 						break;
@@ -133,12 +136,14 @@ void get_file(int inode) {
 		}
 		if(i==13){
 			puts("Zweifach Indirekt\n");
-			einfach=(__u32 *)get_block(ext2_buffer, ino->i_block[i], blocksize);
+			einfach=(int *)get_block(ext2_buffer, ino->i_block[i], blocksize);
 			for(j=0; j<(int)blocksize/4; j++) {
-				zweifach=(__u32 *)get_block(ext2_buffer, einfach[j],blocksize);
+				zweifach=(int *)get_block(ext2_buffer, einfach[j],blocksize);
+				/*printf("j: %d",j);*/
 				for(k=0; k<(int)blocksize/4; k++) {
 					rfilesize+=blocksize;
-					if(zweifach[k]) {
+					/*printf("Block: %d k:%d\n",zweifach[k],k);*/
+					if(zweifach[k] && einfach[j]) {
 						if(rfilesize>ino->i_size) {
 							fwrite(get_block(ext2_buffer,zweifach[k],blocksize),1,blocksize-(rfilesize-ino->i_size),fd);
 							break;
@@ -163,6 +168,7 @@ void get_file(int inode) {
 	}
 	fclose(fd);
 	printf("Datei wurde erfolgreich extrahiert!\n");
+	printf("Info Filesize: %d\n",ino->i_size);
 	return;
 }
 
@@ -226,6 +232,7 @@ void print_hierachy(int inode, unsigned char depth) {
 /* Den simple Entry-Cache leeren */
 void free_entry_list() {
 	struct entry *e,*temp;	
+	printf("Raeume auf ...\n");
 	for(e=anker; e; e=temp->nxt) {
 		temp=e;
 		free(e->name);
@@ -237,7 +244,7 @@ int main (int argc, char **argv)
 {
 	struct ext2_super_block *sb;
 	FILE * ext2dump;
-	__u32 filesize;
+	int filesize;
 	size_t result;
 	int command=1;
 	char number_buf[20];
