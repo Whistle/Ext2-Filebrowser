@@ -34,13 +34,14 @@ struct ext2_super_block *superblock(char *dump, double filesize) {
 		sb=(struct ext2_super_block *)temp;
 		/* Gefunden? */
 		if(sb->s_magic == EXT2_SUPER_MAGIC && (sb->s_log_block_size==0 || sb->s_log_block_size==1 || sb->s_log_block_size==2)) {
-			/*Steht der Superblock am Anfang der ermittelten Blockgroesse ?*/
-			/* if((temp-dump) % (int)pow(2.0,10+sb->s_log_block_size)==0)*/
+			printf("\n\n======================================\n");
 			printf("Superblock-Informationen:\n");
-			printf("Blockgroesse:\t%d\n", sb->s_log_block_size);
+			printf("Start-Position:\t\t%d\n", (char *)sb-ext2_buffer);
+			printf("Blockgroesse:\t\t%d\n", sb->s_log_block_size);
 			printf("Blockgruppen-Nr:\t%d\n", sb->s_block_group_nr);
 			printf("Indodes pro Gruppe:\t%d\n", sb->s_inodes_per_group);
-			printf("Bloecke:\t%d\n",sb->s_blocks_count);
+			printf("Bloecke:\t\t%d\n",sb->s_blocks_count);
+			printf("======================================\n\n\n");
 			return sb;
 		}
 	}
@@ -76,6 +77,7 @@ void get_file(int inode) {
 	struct ext2_inode *ino;
 	struct entry *e;
 	char *filename=0;
+	char *md5cmd;
 	FILE *fd;
 	ino=get_inode(inode);
 	for(e=anker; e; e=e->nxt) {
@@ -88,6 +90,9 @@ void get_file(int inode) {
 		printf("Es konnte keine regulaere Datei mit der Inode %d gefunden werden!\n",inode);
 		return;
 	}
+	md5cmd=(char *)malloc(strlen(filename)+strlen("md5sum ")+1);
+	strcpy(md5cmd,"md5sum ");
+	strcat(md5cmd, filename);
 	fd=fopen(filename, "w+");
 	while(rfilesize<ino->i_size && i<14) {
 		if(i<12) {
@@ -111,7 +116,6 @@ void get_file(int inode) {
 			} 
 		}
 		if(i==12) {
-			puts("Einfach Indirekt\n");
 			/*Enthaelt die Nummer des inderekten Blocks*/
 			einfach=(int *)get_block(ext2_buffer, ino->i_block[i], blocksize);
 			for(j=0; j<(int)blocksize/4; j++) {
@@ -135,7 +139,6 @@ void get_file(int inode) {
 			}
 		}
 		if(i==13){
-			puts("Zweifach Indirekt\n");
 			einfach=(int *)get_block(ext2_buffer, ino->i_block[i], blocksize);
 			for(j=0; j<(int)blocksize/4; j++) {
 				zweifach=(int *)get_block(ext2_buffer, einfach[j],blocksize);
@@ -143,7 +146,7 @@ void get_file(int inode) {
 				for(k=0; k<(int)blocksize/4; k++) {
 					rfilesize+=blocksize;
 					/*printf("Block: %d k:%d\n",zweifach[k],k);*/
-					if(zweifach[k] && einfach[j]) {
+					if(zweifach[k] && einfach[j] && ino->i_block[i]) {
 						if(rfilesize>ino->i_size) {
 							fwrite(get_block(ext2_buffer,zweifach[k],blocksize),1,blocksize-(rfilesize-ino->i_size),fd);
 							break;
@@ -170,6 +173,7 @@ void get_file(int inode) {
 	if(rfilesize>=ino->i_size) {
 		printf("Datei wurde erfolgreich extrahiert!\n");
 		printf("Info Filesize: %d\n",ino->i_size);
+		system(md5cmd);
 	} else {
 		printf("Datei reicht bis in Dreifach-Indirekt. Bitte ausprogrammieren.\n");
 	}
@@ -211,6 +215,8 @@ void print_hierachy(int inode, unsigned char depth) {
 	int rec_len_sum=0;
 
 	ino=get_inode(inode);
+	if(depth==0)
+		printf("\n\nVerzeichnis-Struktur im Ext2-Dump\n\n");
 
 	/* Gib . aus*/
 	de=(struct ext2_dir_entry_2 *) get_block(ext2_buffer, ino[0].i_block[0], blocksize);
@@ -236,7 +242,7 @@ void print_hierachy(int inode, unsigned char depth) {
 /* Den simple Entry-Cache leeren */
 void free_entry_list() {
 	struct entry *e,*temp;	
-	printf("Raeume auf ...\n");
+	printf("Leere Cache ...\n");
 	for(e=anker; e; e=temp->nxt) {
 		temp=e;
 		free(e->name);
