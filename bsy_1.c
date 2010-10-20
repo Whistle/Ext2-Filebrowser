@@ -89,7 +89,7 @@ void get_file(int inode) {
 		return;
 	}
 	fd=fopen(filename, "w+");
-	while(rfilesize<ino->i_size) {
+	while(rfilesize<ino->i_size && i<14) {
 		if(i<12) {
 			rfilesize+=blocksize;
 			/*printf("Block: %d\n",ino->i_block[i]);*/
@@ -160,15 +160,19 @@ void get_file(int inode) {
 					}
 
 				}
-				if(rfilesize>ino->i_size)
+				if(rfilesize>=ino->i_size)
 					break;
 			}
 		}
 		i++;	
 	}
 	fclose(fd);
-	printf("Datei wurde erfolgreich extrahiert!\n");
-	printf("Info Filesize: %d\n",ino->i_size);
+	if(rfilesize>=ino->i_size) {
+		printf("Datei wurde erfolgreich extrahiert!\n");
+		printf("Info Filesize: %d\n",ino->i_size);
+	} else {
+		printf("Datei reicht bis in Dreifach-Indirekt. Bitte ausprogrammieren.\n");
+	}
 	return;
 }
 
