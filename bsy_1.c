@@ -1,3 +1,5 @@
+#include <errno.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,6 +12,10 @@ int blocksize;
 struct entry *anker=0;
 struct ext2_super_block *sb=0;
 char *null_block;
+
+void signal_handler(int sig) {
+	exit(EXIT_FAILURE);
+}
 
 struct entry {
 	int inode;
@@ -252,14 +258,28 @@ void free_entry_list() {
 
 int main (int argc, char **argv)
 {
+	struct sigaction action, oldaction;
 	struct ext2_super_block *sb;
 	FILE * ext2dump;
 	int filesize;
 	size_t result;
 	int command=1;
 	char number_buf[20];
+
+	action.sa_handler=signal_handler;
+	sigemptyset(&action.sa_mask);
+	action.sa_flags=0;
+
 	/* Komme was wolle den Speicher wieder freigeben */
 	atexit(free_entry_list);
+
+
+	if(sigaction(SIGINT, &action, &oldaction) < 0) {
+		printf("Konnte Handler nicht installieren: %s.\n", strerror(errno));
+		return(EXIT_FAILURE);
+	}
+
+
 	ext2dump=fopen(argv[1], "r");
 	if(ext2dump==0) { 
 		fputs("Datei konnte nicht geoeffnet werden!\n",stderr); 
