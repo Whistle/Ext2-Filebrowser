@@ -3,7 +3,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
 #include <linux/fs.h>
 #include <linux/ext2_fs.h>
 
@@ -13,9 +12,6 @@ struct entry *anker=0;
 struct ext2_super_block *sb=0;
 char *null_block;
 
-void signal_handler(int sig) {
-	exit(EXIT_FAILURE);
-}
 
 struct entry {
 	int inode;
@@ -23,6 +19,27 @@ struct entry {
 	char *name;
 	struct entry *nxt;
 };
+
+void signal_handler(int sig) {
+	if(sig==SIGINT)
+		exit(EXIT_FAILURE);
+}
+
+int calc_blocksize(int blockvalue) {
+	switch(blockvalue) {
+		case 0:
+			return 1024;
+			break;
+		case 1:
+			return 2048;
+			break;
+		case 2:
+			return 4096;
+			break;
+		default:
+			return 1024;
+	}
+}
 
 struct ext2_super_block *superblock(char *dump, double filesize) {
 	char *temp;
@@ -47,7 +64,7 @@ struct ext2_super_block *superblock(char *dump, double filesize) {
 			printf("Blockgruppen-Nr:\t%d\n", sb->s_block_group_nr);
 			printf("Indodes pro Gruppe:\t%d\n", sb->s_inodes_per_group);
 			printf("Bloecke:\t\t%d\n",sb->s_blocks_count);
-			printf("======================================\n\n\n");
+			printf("======================================\n\n");
 			return sb;
 		}
 	}
@@ -222,7 +239,7 @@ void print_hierachy(int inode, unsigned char depth) {
 
 	ino=get_inode(inode);
 	if(depth==0)
-		printf("\n\nVerzeichnis-Struktur im Ext2-Dump\n\n");
+		printf("\nVerzeichnis-Struktur im Ext2-Dump\n\n");
 
 	/* Gib . aus*/
 	de=(struct ext2_dir_entry_2 *) get_block(ext2_buffer, ino[0].i_block[0], blocksize);
@@ -234,7 +251,7 @@ void print_hierachy(int inode, unsigned char depth) {
 	rec_len_sum+=de->rec_len;
 
 	/*Und jetzt den Rest*/
-	while(rec_len_sum<blocksize) {
+	while(rec_len_sum<ino->i_size) {
 		de=(struct ext2_dir_entry_2 *) get_block((char *) de, 1, de->rec_len);
 		print_dentry(de,depth);
 		add_entry(de);
@@ -248,7 +265,7 @@ void print_hierachy(int inode, unsigned char depth) {
 /* Den simple Entry-Cache leeren */
 void free_entry_list() {
 	struct entry *e,*temp;	
-	printf("Leere Cache ...\n");
+	printf("\nLeere Cache ...\n");
 	for(e=anker; e; e=temp->nxt) {
 		temp=e;
 		free(e->name);
@@ -307,20 +324,21 @@ int main (int argc, char **argv)
 	sb=superblock(ext2_buffer, filesize);
 	if(!sb)
 		exit(4);
-	blocksize=pow(2.0, 10.0+sb->s_log_block_size);
+	blocksize=calc_blocksize(sb->s_log_block_size);
 	null_block=(char *)calloc(1, (int)blocksize);
 	print_hierachy(EXT2_ROOT_INO,0);
 
 
 	fputs("\nBitte Inode der zu extrahierenden Datei eingeben: ( oder 0 zum Beenden )",stdout);
-	while(command) {
+	while(1) {
 		fgets(number_buf,sizeof(number_buf), stdin);
 		sscanf(number_buf,"%d",&command);
 		if(!command)
 			break;
 		get_file(command);
 	}
-
+	/* Dieser Punkt sollte nie erreicht werden. Freigabe geschieht
+	   durch den Signal Handler */
 	fclose(ext2dump);
 	free(ext2_buffer);
 	free(null_block);
